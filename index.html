@@ -2582,11 +2582,12 @@ const Input = {
     document.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === canvas;
+      if (this.locked && typeof Quiz !== 'undefined' && Quiz.active) { document.exitPointerLock(); return; } // もんだい中は、あとからロックされてもすぐ解除
       if (!this.locked) { this.buttons = [false, false, false]; this.keys = {}; Events.emit('unlock'); }
     });
   },
   lock() { if (this.locked || !this.canvas) return; try { const r = this.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not allowed outside a user gesture */ } },
-  unlock() { if (this.locked) document.exitPointerLock(); },
+  unlock() { if (this.locked || document.pointerLockElement) document.exitPointerLock(); },
   consumeMouse() { const r = [this.dx, this.dy]; this.dx = this.dy = 0; return r; }
 };
 
@@ -4468,10 +4469,9 @@ const Game = {
         if (ChunkManager.isReady(player.x, player.z)) {
           this.ready = true; $('loading').classList.add('hidden');
           if (this.freshSpawn) this.settleSpawn(); else if (Physics.intersects(player)) player.y = world.getHeight(floor(player.x), floor(player.z)) + 1;
-          Input.lock();
           if (this.fresh) { this.fresh = false; Quiz.tips = true; }
           if (BW2.sec <= 0) Quiz.open('start');
-          else HUD.message('画面をクリックすると うごかせるよ');
+          else { Input.lock(); HUD.message('画面をクリックすると うごかせるよ'); }
         }
       } else if (!this.paused) {
         Player.update(dt);
