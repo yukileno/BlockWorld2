@@ -173,6 +173,7 @@
   /* ----- タブレットモード（タッチ操作） ---------------------------------- */
   body.touch-on, body.touch-on #app { touch-action: none; -webkit-touch-callout: none; }
   body.touch-on #hotbar { pointer-events: auto; }
+  body.touch-on #crosshair { display: none; }
   body.touch-on #hotbar .hslot { width: 54px; height: 54px; }
   body.touch-on #msgs { left: 200px; bottom: 90px; max-width: 34%; }
   #touch { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
@@ -2787,7 +2788,7 @@ Events.on('keypress', (code) => Player.handleKey(code));
    12. INTERACTION — raycasting, mining, placing, using blocks and items
    ========================================================================== */
 const Interaction = {
-  target: null, targetMob: null, breaking: null, highlight: null, crack: null, crackTextures: [],
+  aim: null, target: null, targetMob: null, breaking: null, highlight: null, crack: null, crackTextures: [],
   useCooldown: 0, attackCooldown: 0, eatTimer: 0, tmpBox: { x: 0, y: 0, z: 0, w: 0.5, h: 1 },
 
   init(scene) {
@@ -2812,6 +2813,12 @@ const Interaction = {
     }
   },
   reach() { return Player.isCreative() ? 6 : 4.5; },
+  // タッチ操作：画面の中央ではなく、ゆびで さわった場所（-1〜1 の画面座標）に向かう方向
+  aimDir() {
+    const a = this.aim, cam = Game.camera, t = Math.tan(cam.fov * Math.PI / 360);
+    const v = new THREE.Vector3(a.x * t * cam.aspect, a.y * t, -1).applyEuler(new THREE.Euler(player.pitch, player.yaw, 0, 'YXZ')).normalize();
+    return [v.x, v.y, v.z];
+  },
 
   // Voxel DDA raycast. Returns {x,y,z,face,px,py,pz,dist} or null.
   raycast(ox, oy, oz, dx, dy, dz, maxDist, hitLiquid = false) {
@@ -2850,11 +2857,11 @@ const Interaction = {
     const p = player;
     this.useCooldown -= dt; this.attackCooldown -= dt; p.damageTimer -= dt;
     const active = Input.locked && !Screens.isOpen() && !Game.paused && !p.dead;
-    const eye = Player.eye(), dir = Player.lookDir();
+    const eye = Player.eye(), dir = this.aim ? this.aimDir() : Player.lookDir();
     const held = Player.held(), heldItem = held ? Items.get(held.name) : null;
     const wantsLiquid = heldItem && (heldItem.name === 'bucket');
-    this.target = active ? this.raycast(eye[0], eye[1], eye[2], dir[0], dir[1], dir[2], this.reach(), wantsLiquid) : null;
-    this.targetMob = active ? Mobs.raycast(eye, dir, Math.min(this.reach(), this.target ? this.target.dist : this.reach())) : null;
+    this.target = active && !(Game.touch && !this.aim) ? this.raycast(eye[0], eye[1], eye[2], dir[0], dir[1], dir[2], this.reach(), wantsLiquid) : null;
+    this.targetMob = active && !(Game.touch && !this.aim) ? Mobs.raycast(eye, dir, Math.min(this.reach(), this.target ? this.target.dist : this.reach())) : null;
     if (this.targetMob) this.target = null;
     // Highlight
     if (this.target) {
@@ -4634,28 +4641,41 @@ const TouchUI = {
     $('btn-touch').addEventListener('click', () => this.set(!this.enabled()));
     const canvas = $('gl'); let look = null;
     const play = () => Game.touch && Game.running && Game.ready && !Game.paused && !Screens.isOpen();
+    const ndc = (x, y) => { const r = canvas.getBoundingClientRect(); return { x: (x - r.left) / r.width * 2 - 1, y: -((y - r.top) / r.height * 2 - 1) }; };
+    // マイクラ（統合版）と同じ：タップ＝そこに置く・つかう（モブならこうげき）／長押し＝そこを壊す／なぞる＝見まわす
     canvas.addEventListener('touchstart', (e) => {
       if (!Game.touch) return; e.preventDefault();
       if (!play()) return; if (!Input.locked) Input.lock();
       for (const t of e.changedTouches) {
         if (look) continue;
-        look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, moved: false, held: false };
-        look.timer = setTimeout(() => { if (look && !look.moved) { look.held = true; Input.buttons[0] = true; Events.emit('mousedown', 0); } }, 350); // 長押し＝壊す・こうげき
+        look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, moved: false, held: false, btn: 0 };
+        Interaction.aim = ndc(t.clientX, t.clientY);
+        look.timer = setTimeout(() => {
+          if (!look || look.moved) return;
+          look.held = true; const h = Player.held(), it = h && Items.get(h.name);
+          look.btn = it && it.food ? 2 : 0; // 食べ物を持っているときの長押しは「食べる」
+          Input.buttons[look.btn] = true; Events.emit('mousedown', look.btn);
+        }, 350);
       }
     }, { passive: false });
     canvas.addEventListener('touchmove', (e) => {
       if (!Game.touch) return; e.preventDefault();
       for (const t of e.changedTouches) if (look && t.identifier === look.id) {
+        if (look.held) { Interaction.aim = ndc(t.clientX, t.clientY); continue; } // 長押し中は、ゆびの場所をねらいつづける
         Input.dx += (t.clientX - look.x) * 1.4; Input.dy += (t.clientY - look.y) * 1.4; look.x = t.clientX; look.y = t.clientY;
-        if (!look.moved && Math.hypot(t.clientX - look.sx, t.clientY - look.sy) > 12) { look.moved = true; clearTimeout(look.timer); }
+        if (!look.moved && Math.hypot(t.clientX - look.sx, t.clientY - look.sy) > 12) { look.moved = true; clearTimeout(look.timer); Interaction.aim = null; }
       }
     }, { passive: false });
     const end = (e) => {
       if (!Game.touch) return; e.preventDefault();
       for (const t of e.changedTouches) if (look && t.identifier === look.id) {
         clearTimeout(look.timer);
-        if (look.held) Input.buttons[0] = false;
-        else if (!look.moved && play()) { Input.buttons[2] = true; Events.emit('mousedown', 2); setTimeout(() => { Input.buttons[2] = false; }, 100); } // タップ＝置く・つかう
+        if (look.held) { Input.buttons[look.btn] = false; Interaction.aim = null; }
+        else if (!look.moved && play()) {
+          const eye = Player.eye(), dir = Interaction.aimDir(), btn = Mobs.raycast(eye, dir, Interaction.reach()) ? 0 : 2; // モブをタップ＝こうげき
+          Input.buttons[btn] = true; Events.emit('mousedown', btn);
+          setTimeout(() => { Input.buttons[btn] = false; Interaction.aim = null; }, 120);
+        } else Interaction.aim = null;
         look = null;
       }
     };
