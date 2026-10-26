@@ -4608,7 +4608,7 @@ const Quiz = {
     $('pause').classList.add('hidden');
     Input.unlock();
     const fr = $('quiz-frame');
-    if (!this.loaded) { this.loaded = true; fr.src = 'quiz/index.html'; }
+    if (!this.loaded) { this.loaded = true; fr.src = 'quiz/index.html?v=' + encodeURIComponent(UpdateCheck.base || Date.now()); }
     $('quiz-overlay').classList.remove('hidden');
     try { fr.contentWindow.BWQ && fr.contentWindow.BWQ.show(); } catch (e) { /* まだ読みこみ中 */ }
     setTimeout(() => { try { fr.focus(); fr.contentWindow.focus(); } catch (e) { /* ignore */ } }, 60);
@@ -4764,9 +4764,17 @@ const RecipeBook = {
    あそんでいる最中は「いま更新する」ボタンを出す。取れなかったときは何もしない。 */
 const UpdateCheck = {
   base: null, notified: false,
+  // いま開いているページ自身の署名（ブラウザのキャッシュに残っている、読みこんだときのもの）。古いキャッシュのページを開いてしまっていても検出できる
+  async loadedSignature() {
+    try {
+      const res = await fetch(location.href.split('#')[0], { cache: 'only-if-cached', mode: 'same-origin' });
+      if (res && res.ok) return (res.headers.get('last-modified') || '') + '|' + (res.headers.get('etag') || '');
+    } catch (e) { /* キャッシュにないとき */ }
+    return null;
+  },
   async signature() {
     try {
-      const res = await fetch('index.html', { method: 'HEAD', cache: 'no-store' });
+      const res = await fetch('index.html?t=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
       if (!res.ok) return null;
       return (res.headers.get('last-modified') || '') + '|' + (res.headers.get('etag') || '');
     } catch (e) { return null; }
@@ -4775,14 +4783,16 @@ const UpdateCheck = {
     if (this.notified) return;
     const sig = await this.signature();
     if (!sig || sig === '|') return;
-    if (this.base === null) { this.base = sig; return; }
+    if (this.base === null) { const own = await this.loadedSignature(); this.base = own && own !== '|' ? own : sig; if (this.base === sig) return; }
     if (sig === this.base) return;
     this.notified = true;
-    if (!Game.running) { location.reload(); return; }
+    if (!Game.running) { this.go(); return; }
     // あそんでいる最中は マウスがロックされていてボタンをおせないので、ボタンなしで自動で更新する（セーブは beforeunload でされる）
     try { HUD.message('🆕 新しいバージョン！ 自動で更新するよ…'); } catch (e) { /* ignore */ }
-    setTimeout(() => location.reload(), 1500);
+    setTimeout(() => this.go(), 1500);
   },
+  // キャッシュをさけるため、毎回ちがうURLで読みこみなおす
+  go() { location.replace(location.pathname + '?r=' + Date.now()); },
   init() {
     this.check();
     setInterval(() => this.check(), 3 * 60 * 1000);
