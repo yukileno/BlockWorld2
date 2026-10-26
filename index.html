@@ -4778,10 +4778,9 @@ const UpdateCheck = {
     if (sig === this.base) return;
     this.notified = true;
     if (!Game.running) { location.reload(); return; }
-    const bar = document.createElement('div'); bar.className = 'update-bar';
-    bar.innerHTML = '<span>🆕 新しいバージョンがあるよ！</span><button class="btn small" type="button">いま更新する</button>';
-    bar.querySelector('button').addEventListener('click', () => { try { if (Game.running && Game.ready && !Game.free) Save.saveSync(); } catch (e) { /* ignore */ } location.reload(); });
-    $('app').appendChild(bar);
+    // あそんでいる最中は マウスがロックされていてボタンをおせないので、ボタンなしで自動で更新する（セーブは beforeunload でされる）
+    try { HUD.message('🆕 新しいバージョン！ 自動で更新するよ…'); } catch (e) { /* ignore */ }
+    setTimeout(() => location.reload(), 1500);
   },
   init() {
     this.check();
