@@ -259,6 +259,7 @@
         <button class="btn big" id="btn-play">⛏️ あたらしく はじめる</button>
         <button class="btn big" id="btn-continue">▶ つづきから</button>
       </div>
+      <div class="row"><button class="btn" id="btn-free">🎮 フリーモード（かくにん用・もんだいなし・セーブなし）</button></div>
       <p style="font-size:12px;color:#ccc">おなじ名前のワールドは、いつも おなじ地形になるよ。</p>
       <div class="hidden">
         <select id="mode-select"><option value="survival">s</option></select><input type="number" id="rd-input" value="5">
@@ -3220,10 +3221,10 @@ const Screens = {
       html = `<h2>チェスト</h2>${this.gridHTML('chest', 27, 9)}${this.playerInvHTML()}`;
     } else if (t === 'creative') {
       this.current = 'creative';
-      const tabs = ['blocks', 'materials', 'tools', 'food', 'misc'].map(n => `<button class="btn small ${n === this.tab ? 'sel' : ''}" data-tab="${n}">${prettify(n)}</button>`).join('');
+      const tabs = ['blocks', 'materials', 'tools', 'food', 'misc'].map(n => `<button class="btn small ${n === this.tab ? 'sel' : ''}" data-tab="${n}">${{blocks:'ブロック',materials:'素材',tools:'どうぐ',food:'食べもの',misc:'そのほか'}[n]}</button>`).join('');
       const list = Items.list.filter(it => it.creativeTab === this.tab);
       this.containers.catalog = list.map(it => ({ name: it.name, count: it.stack }));
-      html = `<h2>Creative Inventory</h2><div class="row">${tabs}<span style="font-size:11px">Click: take stack · Click catalogue with item: delete</span></div><div class="catalog">${list.map((it, i) => this.slotHTML('catalog', i)).join('')}</div>${this.playerInvHTML()}`;
+      html = `<h2>フリーモード：すべてのアイテム</h2><div class="row">${tabs}<span style="font-size:11px">クリックで とる ・ もっている状態でクリックで すてる</span></div><div class="catalog">${list.map((it, i) => this.slotHTML('catalog', i)).join('')}</div>${this.playerInvHTML()}`;
     }
     P.innerHTML = html;
     P.onclick = null;
@@ -4284,6 +4285,7 @@ const Save = {
   },
   // localStorage copy is deflated with JSZip (base64) so many chunks fit in the ~5 MB quota.
   async save(silent) {
+    if (Game.free) return false;
     try {
       const data = this.serialize(), json = JSON.stringify(data);
       const zip = new JSZip(); zip.file('world.json', json);
@@ -4350,6 +4352,10 @@ const Menus = {
       Game.mode = 'survival'; ChunkManager.setRenderDistance(parseInt($('rd-slider').value) || 5);
       Game.start(seed, null);
     });
+    $('btn-free').addEventListener('click', () => {
+      ChunkManager.setRenderDistance(parseInt($('rd-slider').value) || 5);
+      Game.start($('seed-input').value.trim() || String(Math.floor(Math.random() * 1e9)), null, true);
+    });
     $('btn-quiz').addEventListener('click', () => Quiz.open('manual'));
     $('btn-continue').addEventListener('click', async () => { const d = await Save.loadData(); if (d) Save.apply(d); else HUD.message('セーブデータがないよ'); });
     $('btn-continue').disabled = !Save.hasSave();
@@ -4396,7 +4402,8 @@ const Game = {
   resize() { const w = window.innerWidth, h = window.innerHeight; this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix(); },
 
   // Start a new (or loaded) world with the given seed
-  start(seed, data) {
+  start(seed, data, free) {
+    this.free = !!free; this.mode = this.free ? 'creative' : 'survival';
     this.seed = String(seed);
     world.reset(this.seed); Terrain.init(this.seed); Scheduler.clear(); Entities.clear(); Mobs.clear(); Particles.n = 0;
     ChunkManager.needsScan = true; ChunkManager.pcx = 1e9; ChunkManager.stats = { generated: 0, meshed: 0, loaded: 0 };
@@ -4420,7 +4427,7 @@ const Game = {
     $('loading').classList.remove('hidden'); $('loadtext').textContent = 'ワールドを つくっているよ…';
     BW2.sec = data && data.bw2sec ? Math.min(BW2.MAX, data.bw2sec) : 0; BW2.pending = {}; Quiz.active = false; $('quiz-overlay').classList.add('hidden');
     this.running = true; this.paused = false; this.ready = false; this.autosave = 0; $('hud').classList.remove('hidden');
-    this.mode = 'survival';
+    if (!this.free) this.mode = 'survival';
   },
   stop() {
     this.running = false; this.ready = false; Input.unlock(); Screens.close(); $('hud').classList.add('hidden');
@@ -4470,7 +4477,8 @@ const Game = {
           this.ready = true; $('loading').classList.add('hidden');
           if (this.freshSpawn) this.settleSpawn(); else if (Physics.intersects(player)) player.y = world.getHeight(floor(player.x), floor(player.z)) + 1;
           if (this.fresh) { this.fresh = false; Quiz.tips = true; }
-          if (BW2.sec <= 0) Quiz.open('start');
+          if (this.free) { Input.lock(); HUD.message('🎮 フリーモード：もんだいなし・セーブなし。Eで すべてのアイテム、スペース2回で とべる'); }
+          else if (BW2.sec <= 0) Quiz.open('start');
           else { Input.lock(); HUD.message('画面をクリックすると うごかせるよ'); }
         }
       } else if (!this.paused) {
@@ -4485,7 +4493,7 @@ const Game = {
         Particles.update(dt);
         Weather.update(dt);
         this.autosave += dt;
-        if (this.autosave > 60) { this.autosave = 0; Save.save(true); }
+        if (this.autosave > 60 && !this.free) { this.autosave = 0; Save.save(true); }
       }
       // Camera
       const p = player;
@@ -4542,7 +4550,7 @@ const BW2 = {
   },
   /** あそんでいる間だけ減る（もんだい・もちもの・メニュー中は減らない） */
   tick(dt) {
-    if (Quiz.active || Game.paused || !Input.locked) return; // マウスがロックされているとき（＝あそんでいるとき）だけ減る
+    if (Game.free || Quiz.active || Game.paused || !Input.locked) return; // マウスがロックされているとき（＝あそんでいるとき）だけ減る
     this.sec = Math.max(0, this.sec - dt);
     if (this.sec <= 0) Quiz.open('timeup');
   },
@@ -4551,7 +4559,7 @@ const BW2 = {
     $('timer-text').textContent = '⏱ ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
     t.firstElementChild.nextElementSibling.firstElementChild.style.width = (this.sec / this.MAX * 100) + '%';
     t.classList.toggle('low', this.sec < 10);
-    t.style.display = Game.running && Game.ready ? 'block' : 'none';
+    t.style.display = Game.running && Game.ready && !Game.free ? 'block' : 'none';
   },
   closeQuiz() { Quiz.close(); }
 };
@@ -4560,7 +4568,7 @@ window.BW2 = BW2;
 const Quiz = {
   active: false, loaded: false, tips: false,
   open(reason) {
-    if (this.active || !Game.running || !Game.ready || player.dead) return;
+    if (this.active || Game.free || !Game.running || !Game.ready || player.dead) return;
     this.active = true; Game.paused = true;
     Screens.close(); RecipeBook.close();
     $('pause').classList.add('hidden');
@@ -4654,7 +4662,7 @@ const UpdateCheck = {
     if (!Game.running) { location.reload(); return; }
     const bar = document.createElement('div'); bar.className = 'update-bar';
     bar.innerHTML = '<span>🆕 新しいバージョンがあるよ！</span><button class="btn small" type="button">いま更新する</button>';
-    bar.querySelector('button').addEventListener('click', () => { try { if (Game.running && Game.ready) Save.saveSync(); } catch (e) { /* ignore */ } location.reload(); });
+    bar.querySelector('button').addEventListener('click', () => { try { if (Game.running && Game.ready && !Game.free) Save.saveSync(); } catch (e) { /* ignore */ } location.reload(); });
     $('app').appendChild(bar);
   },
   init() {
@@ -4669,7 +4677,7 @@ window.addEventListener('load', () => {
   try { Game.init(); }
   catch (e) { console.error(e); document.body.insertAdjacentHTML('beforeend', '<pre style="color:#f88;position:absolute;top:0;left:0;z-index:99;background:#000;padding:8px">Startup error: ' + e.message + '\n' + e.stack + '</pre>'); }
 });
-window.addEventListener('beforeunload', () => { if (Game.running && Game.ready) Save.saveSync(); });
+window.addEventListener('beforeunload', () => { if (Game.running && Game.ready && !Game.free) Save.saveSync(); });
 
 /* ============================================================================
    STUB INDEX — features intentionally left for later iteration
