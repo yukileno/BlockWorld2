@@ -183,6 +183,7 @@
   #joy-knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: rgba(255,255,255,.65); }
   #t-jump { position: absolute; right: 30px; bottom: 150px; width: 92px; height: 92px; font-size: 14px; }
   #t-use { position: absolute; right: 140px; bottom: 100px; width: 80px; height: 80px; font-size: 12px; }
+  #t-fly { position: absolute; right: 140px; bottom: 190px; width: 72px; height: 72px; font-size: 12px; }
   #t-sneak { position: absolute; left: 200px; bottom: 100px; width: 72px; height: 72px; font-size: 12px; }
   #t-top { position: absolute; right: 8px; top: 62px; display: flex; gap: 8px; }
   #t-top button { width: 54px; height: 54px; font-size: 22px; }
@@ -220,6 +221,7 @@
     <div id="joy"><i id="joy-knob"></i></div>
     <button id="t-sneak">しゃがむ</button>
     <button id="t-use">🍖<br>たべる<br>つかう</button>
+    <button id="t-fly" class="hidden">✈<br>とぶ</button>
     <button id="t-jump">⤒<br>ジャンプ</button>
     <div id="t-top"><button id="t-inv">🎒</button><button id="t-quiz">✏️</button><button id="t-menu">⚙</button></div>
   </div>
@@ -4509,7 +4511,7 @@ const Game = {
           this.ready = true; $('loading').classList.add('hidden');
           if (this.freshSpawn) this.settleSpawn(); else if (Physics.intersects(player)) player.y = world.getHeight(floor(player.x), floor(player.z)) + 1;
           if (this.fresh) { this.fresh = false; Quiz.tips = true; }
-          if (this.free) { Input.lock(); HUD.message('🎮 フリーモード：もんだいなし・セーブなし。Eで すべてのアイテム、スペース2回で とべる'); }
+          if (this.free) { Input.lock(); HUD.message('🎮 フリーモード：もんだいなし・セーブなし。Eで すべてのアイテム、スペースを2回おすと とべる（もういちどで おりる）。Shiftで さがる'); }
           else if (BW2.sec <= 0) Quiz.open('start');
           else { Input.lock(); HUD.message('画面をクリックすると うごかせるよ'); }
         }
@@ -4635,6 +4637,7 @@ const TouchUI = {
   refresh() {
     const show = Game.touch && Game.running && Game.ready && !Screens.isOpen() && !Game.paused && !player.dead;
     $('touch').classList.toggle('hidden', !show);
+    $('t-fly').classList.toggle('hidden', !Game.free);
   },
   init() {
     this.label();
@@ -4697,7 +4700,8 @@ const TouchUI = {
     joy.addEventListener('touchend', joyEnd, { passive: false }); joy.addEventListener('touchcancel', joyEnd, { passive: false });
     // ボタン
     const hold = (id, down, up) => { const b = $(id); b.addEventListener('touchstart', (e) => { e.preventDefault(); down(); }, { passive: false }); const u = (e) => { e.preventDefault(); up(); }; b.addEventListener('touchend', u, { passive: false }); b.addEventListener('touchcancel', u, { passive: false }); };
-    hold('t-jump', () => { Input.keys.Space = true; }, () => { Input.keys.Space = false; });
+    hold('t-fly', () => { Player.toggleFly(); $('t-fly').classList.toggle('on', player.flying); }, () => {});
+    hold('t-jump', () => { Input.keys.Space = true; Events.emit('keypress', 'Space'); }, () => { Input.keys.Space = false; });
     hold('t-use', () => { Input.buttons[2] = true; Events.emit('mousedown', 2); }, () => { Input.buttons[2] = false; });
     hold('t-sneak', () => { const on = !Input.keys.ShiftLeft; Input.keys.ShiftLeft = on; $('t-sneak').classList.toggle('on', on); }, () => {});
     hold('t-inv', () => Events.emit('keypress', 'KeyE'), () => {});
