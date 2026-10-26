@@ -1,0 +1,4 @@
+voxelcraft-main/
+*.pdf
+.claude/
+node_modules
