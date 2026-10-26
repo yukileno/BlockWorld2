@@ -4638,6 +4638,7 @@ const TouchUI = {
     const show = Game.touch && Game.running && Game.ready && !Screens.isOpen() && !Game.paused && !player.dead;
     $('touch').classList.toggle('hidden', !show);
     $('t-fly').classList.toggle('hidden', !Game.free);
+    $('t-quiz').classList.toggle('hidden', !!Game.free);
   },
   init() {
     this.label();
