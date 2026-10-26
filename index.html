@@ -2,7 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 fill=%27%236b4a2b%27/%3E%3Crect width=%2716%27 height=%275%27 fill=%27%234caf50%27/%3E%3C/svg%3E">
 <title>ブロックワールド2</title>
 <!--
@@ -169,6 +170,22 @@
   .recipe-btn { float: right; }
   #msgs { font-size: 15px; }
   .hint-note { font-size: 13px; background: #fff7d6; border: 2px solid #e0b100; color: #4a3b00; padding: 6px 10px; margin-top: 8px; }
+  /* ----- タブレットモード（タッチ操作） ---------------------------------- */
+  body.touch-on, body.touch-on #app { touch-action: none; -webkit-touch-callout: none; }
+  body.touch-on #hotbar { pointer-events: auto; }
+  body.touch-on #hotbar .hslot { width: 54px; height: 54px; }
+  body.touch-on #msgs { left: 200px; bottom: 90px; max-width: 34%; }
+  #touch { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+  #touch button { pointer-events: auto; touch-action: none; font-family: inherit; color: #fff; font-weight: bold; text-shadow: 1px 1px #000; background: rgba(0,0,0,.45); border: 3px solid rgba(255,255,255,.7); border-radius: 50%; -webkit-user-select: none; user-select: none; }
+  #touch button:active, #touch button.on { background: rgba(255,200,60,.6); }
+  #joy { position: absolute; left: 28px; bottom: 90px; width: 150px; height: 150px; border-radius: 50%; background: rgba(0,0,0,.3); border: 3px solid rgba(255,255,255,.6); pointer-events: auto; touch-action: none; }
+  #joy-knob { position: absolute; left: 50%; top: 50%; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; background: rgba(255,255,255,.65); }
+  #t-jump { position: absolute; right: 30px; bottom: 150px; width: 92px; height: 92px; font-size: 14px; }
+  #t-use { position: absolute; right: 140px; bottom: 100px; width: 80px; height: 80px; font-size: 12px; }
+  #t-sneak { position: absolute; left: 200px; bottom: 100px; width: 72px; height: 72px; font-size: 12px; }
+  #t-top { position: absolute; right: 8px; top: 62px; display: flex; gap: 8px; }
+  #t-top button { width: 54px; height: 54px; font-size: 22px; }
+  #btn-touch.on { background: #3a8f3a; }
 </style>
 </head>
 <body>
@@ -197,6 +214,15 @@
   <div id="cursor-stack"><img alt=""><span class="cnt"></span></div>
   <div id="tooltip"></div>
 
+  <!-- タッチ操作 -->
+  <div id="touch" class="hidden">
+    <div id="joy"><i id="joy-knob"></i></div>
+    <button id="t-sneak">しゃがむ</button>
+    <button id="t-use">🍖<br>たべる<br>つかう</button>
+    <button id="t-jump">⤒<br>ジャンプ</button>
+    <div id="t-top"><button id="t-inv">🎒</button><button id="t-quiz">✏️</button><button id="t-menu">⚙</button></div>
+  </div>
+
   <!-- メニュー -->
   <div id="pause" class="overlay hidden">
     <div class="panel" style="min-width: 520px;">
@@ -222,6 +248,7 @@
         <div><kbd>E</kbd> もちもの・クラフト &nbsp; <kbd>Q</kbd> すてる</div>
         <div><kbd>M</kbd> もんだいを とく（あそぶ時間と素材をゲット）</div>
         <div><kbd>Esc</kbd> メニュー</div>
+        <div>📱 タブレット：左のスティックで移動、画面をなぞって見まわす、タップで置く、長押しで壊す</div>
       </div>
       <div class="hint-note">
         🌳 木をたたいて「原木」→ もちもの（E）で「木材」→「作業台」→ ツルハシを作ろう！<br>
@@ -256,6 +283,7 @@
         <button class="btn big" id="btn-play">⛏️ あたらしく はじめる</button>
         <button class="btn big" id="btn-continue">▶ つづきから</button>
       </div>
+      <div class="row"><button class="btn" id="btn-touch">📱 タブレットモード：オフ</button></div>
       <div class="row"><button class="btn" id="btn-free">🎮 フリーモード（かくにん用・もんだいなし・セーブなし）</button></div>
       <div class="hidden">
         <input type="text" id="seed-input"><select id="mode-select"><option value="survival">s</option></select><input type="number" id="rd-input" value="5">
@@ -2583,8 +2611,8 @@ const Input = {
       if (!this.locked) { this.buttons = [false, false, false]; this.keys = {}; Events.emit('unlock'); }
     });
   },
-  lock() { if (this.locked || !this.canvas) return; try { const r = this.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not allowed outside a user gesture */ } },
-  unlock() { if (this.locked || document.pointerLockElement) document.exitPointerLock(); },
+  lock() { if (Game.touch) { this.locked = true; return; } if (this.locked || !this.canvas) return; try { const r = this.canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) { /* not allowed outside a user gesture */ } },
+  unlock() { if (Game.touch) { if (this.locked) { this.locked = false; this.buttons = [false, false, false]; this.keys = {}; Events.emit('unlock'); } return; } if (this.locked || document.pointerLockElement) document.exitPointerLock(); },
   consumeMouse() { const r = [this.dx, this.dy]; this.dx = this.dy = 0; return r; }
 };
 
@@ -4254,7 +4282,7 @@ const HUD = {
     if (this.flashTimer > 0) { this.flashTimer -= dt; if (this.flashTimer <= 0) $('damage-flash').style.background = 'rgba(255,0,0,0)'; }
     $('water-tint').style.background = player.headInWater ? 'rgba(20,60,160,0.35)' : 'rgba(20,60,160,0)';
     $('fire-overlay').classList.toggle('hidden', !(player.fire > 0 && !Player.isCreative()));
-    BW2.updateHud();
+    BW2.updateHud(); TouchUI.refresh();
     if (this.uiTimer < 0.1) return;
     this.uiTimer = 0;
     this.drawBars();
@@ -4399,6 +4427,7 @@ const Game = {
 
   // Start a new (or loaded) world with the given seed
   start(seed, data, free) {
+    this.touch = TouchUI.enabled(); document.body.classList.toggle('touch-on', this.touch);
     this.free = !!free; this.mode = this.free ? 'creative' : 'survival';
     this.seed = String(seed);
     world.reset(this.seed); Terrain.init(this.seed); Scheduler.clear(); Entities.clear(); Mobs.clear(); Particles.n = 0;
@@ -4582,11 +4611,80 @@ const Quiz = {
     $('quiz-overlay').classList.add('hidden');
     Game.paused = false; $('pause').classList.add('hidden');
     window.focus();
-    if (this.tips) { this.tips = false; HUD.message('🌳 まず 木をたたいて「原木」をあつめよう（左クリックをおしつづける）'); HUD.message('📦 Eキーで もちもの。原木 → 木材 → 作業台 → ツルハシ！'); HUD.message('✏️ 時間がなくなると もんだいが出るよ。とくと 素材と時間がもらえる！'); }
+    if (this.tips) { this.tips = false; HUD.message(Game.touch ? '🌳 まず 木を長押しして「原木」をあつめよう' : '🌳 まず 木をたたいて「原木」をあつめよう（左クリックをおしつづける）'); HUD.message(Game.touch ? '📦 🎒ボタンで もちもの。原木 → 木材 → 作業台 → ツルハシ！' : '📦 Eキーで もちもの。原木 → 木材 → 作業台 → ツルハシ！'); HUD.message('✏️ 時間がなくなると もんだいが出るよ。とくと 素材と時間がもらえる！'); }
     const keys = Object.keys(BW2.pending);
     if (keys.length) { HUD.message('🎁 ゲット: ' + keys.map(n => Items.get(n).displayName + ' ×' + BW2.pending[n]).join('、')); BW2.pending = {}; }
     if (!player.dead) Input.lock();
     setTimeout(() => { if (Game.running && !Game.paused && !Input.locked && !Screens.isOpen()) HUD.message('画面をクリックすると うごかせるよ'); }, 400);
+  }
+};
+
+
+/* ---- タブレットモード：左スティックで移動、なぞって見まわす、タップで置く、長押しで壊す ---- */
+const TouchUI = {
+  enabled() { try { const v = localStorage.getItem('bw2_touch'); if (v !== null) return v === '1'; } catch (e) { /* ignore */ } return !!(window.matchMedia && matchMedia('(pointer: coarse)').matches); },
+  set(on) { try { localStorage.setItem('bw2_touch', on ? '1' : '0'); } catch (e) { /* ignore */ } this.label(); },
+  label() { const b = $('btn-touch'); const on = this.enabled(); b.textContent = '📱 タブレットモード：' + (on ? 'オン' : 'オフ'); b.classList.toggle('on', on); },
+  refresh() {
+    const show = Game.touch && Game.running && Game.ready && !Screens.isOpen() && !Game.paused && !player.dead;
+    $('touch').classList.toggle('hidden', !show);
+  },
+  init() {
+    this.label();
+    $('btn-touch').addEventListener('click', () => this.set(!this.enabled()));
+    const canvas = $('gl'); let look = null;
+    const play = () => Game.touch && Game.running && Game.ready && !Game.paused && !Screens.isOpen();
+    canvas.addEventListener('touchstart', (e) => {
+      if (!Game.touch) return; e.preventDefault();
+      if (!play()) return; if (!Input.locked) Input.lock();
+      for (const t of e.changedTouches) {
+        if (look) continue;
+        look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, moved: false, held: false };
+        look.timer = setTimeout(() => { if (look && !look.moved) { look.held = true; Input.buttons[0] = true; Events.emit('mousedown', 0); } }, 350); // 長押し＝壊す・こうげき
+      }
+    }, { passive: false });
+    canvas.addEventListener('touchmove', (e) => {
+      if (!Game.touch) return; e.preventDefault();
+      for (const t of e.changedTouches) if (look && t.identifier === look.id) {
+        Input.dx += (t.clientX - look.x) * 1.4; Input.dy += (t.clientY - look.y) * 1.4; look.x = t.clientX; look.y = t.clientY;
+        if (!look.moved && Math.hypot(t.clientX - look.sx, t.clientY - look.sy) > 12) { look.moved = true; clearTimeout(look.timer); }
+      }
+    }, { passive: false });
+    const end = (e) => {
+      if (!Game.touch) return; e.preventDefault();
+      for (const t of e.changedTouches) if (look && t.identifier === look.id) {
+        clearTimeout(look.timer);
+        if (look.held) Input.buttons[0] = false;
+        else if (!look.moved && play()) { Input.buttons[2] = true; Events.emit('mousedown', 2); setTimeout(() => { Input.buttons[2] = false; }, 100); } // タップ＝置く・つかう
+        look = null;
+      }
+    };
+    canvas.addEventListener('touchend', end, { passive: false }); canvas.addEventListener('touchcancel', end, { passive: false });
+    // 左スティック
+    const joy = $('joy'), knob = $('joy-knob'); let jid = null;
+    const setKeys = (dx, dy) => {
+      const k = Input.keys, m = Math.hypot(dx, dy);
+      k.KeyA = dx < -0.35; k.KeyD = dx > 0.35; k.KeyW = dy < -0.35; k.KeyS = dy > 0.35; k.ControlLeft = dy < -0.35 && m > 1.05; // はしっこまで倒すとダッシュ
+    };
+    const joyMove = (t) => {
+      const r = joy.getBoundingClientRect(), R = r.width / 2;
+      const dx = (t.clientX - r.left - R) / R, dy = (t.clientY - r.top - R) / R, m = Math.hypot(dx, dy);
+      const c = m > 1 ? 1 / m : 1; knob.style.transform = `translate(${dx * c * R * 0.6}px, ${dy * c * R * 0.6}px)`; setKeys(dx, dy);
+    };
+    joy.addEventListener('touchstart', (e) => { e.preventDefault(); if (jid !== null) return; const t = e.changedTouches[0]; jid = t.identifier; joyMove(t); }, { passive: false });
+    joy.addEventListener('touchmove', (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === jid) joyMove(t); }, { passive: false });
+    const joyEnd = (e) => { e.preventDefault(); for (const t of e.changedTouches) if (t.identifier === jid) { jid = null; knob.style.transform = ''; setKeys(0, 0); } };
+    joy.addEventListener('touchend', joyEnd, { passive: false }); joy.addEventListener('touchcancel', joyEnd, { passive: false });
+    // ボタン
+    const hold = (id, down, up) => { const b = $(id); b.addEventListener('touchstart', (e) => { e.preventDefault(); down(); }, { passive: false }); const u = (e) => { e.preventDefault(); up(); }; b.addEventListener('touchend', u, { passive: false }); b.addEventListener('touchcancel', u, { passive: false }); };
+    hold('t-jump', () => { Input.keys.Space = true; }, () => { Input.keys.Space = false; });
+    hold('t-use', () => { Input.buttons[2] = true; Events.emit('mousedown', 2); }, () => { Input.buttons[2] = false; });
+    hold('t-sneak', () => { const on = !Input.keys.ShiftLeft; Input.keys.ShiftLeft = on; $('t-sneak').classList.toggle('on', on); }, () => {});
+    hold('t-inv', () => Events.emit('keypress', 'KeyE'), () => {});
+    hold('t-quiz', () => Quiz.open('manual'), () => {});
+    hold('t-menu', () => Game.pause(), () => {});
+    // ホットバーをタップで選ぶ
+    $('hotbar').addEventListener('touchstart', (e) => { if (!Game.touch) return; const sl = e.target.closest('.hslot'); if (!sl) return; e.preventDefault(); player.hotbar = [...$('hotbar').children].indexOf(sl); HUD.refreshHotbar(); }, { passive: false });
   }
 };
 
@@ -4669,6 +4767,7 @@ const UpdateCheck = {
   }
 };
 UpdateCheck.init();
+TouchUI.init();
 window.addEventListener('load', () => {
   try { Game.init(); }
   catch (e) { console.error(e); document.body.insertAdjacentHTML('beforeend', '<pre style="color:#f88;position:absolute;top:0;left:0;z-index:99;background:#000;padding:8px">Startup error: ' + e.message + '\n' + e.stack + '</pre>'); }
